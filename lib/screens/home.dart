@@ -17,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<Note> filteredNotes = [];
   bool sorted = false;
+  String selectedCategory = 'All'; // Define selectedCategory here
 
   @override
   void initState() {
@@ -24,10 +25,23 @@ class _HomeScreenState extends State<HomeScreen> {
     filteredNotes = sampleNotes;
   }
 
-  void sortNotesByModifiedTime(List<Note> notes) {
+void sortNotesByModifiedTime(List<Note> notes) {
     notes.sort((a, b) => a.modifiedTime.compareTo(b.modifiedTime));
     if (!sorted) notes = notes.reversed.toList();
     sorted = !sorted;
+  }
+
+  // Function to filter notes based on category
+ void filterNotesByCategory(String category) {
+    setState(() {
+      selectedCategory = category;
+      if (category == 'All') {
+        filteredNotes = sampleNotes;
+      } else {
+        filteredNotes = sampleNotes.where((note) => note.category == category).toList();
+      }
+    });
+    print('Category Selected: $category'); // Print the selected category
   }
 
   Color getRandomColor() {
@@ -51,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
       filteredNotes.removeAt(index);
     });
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -121,13 +137,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            Row(
+             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                CategoryContainer(category: 'All'),
-                CategoryContainer(category: 'Favorites'),
-                CategoryContainer(category: 'To Do Lists'),
-                CategoryContainer(category: 'Tasks'),
+                CategoryContainer(
+                  category: 'All',
+                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                ),
+                CategoryContainer(
+                  category: 'Favorites',
+                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                ),
+                CategoryContainer(
+                  category: 'To Do Lists',
+                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                ),
+                CategoryContainer(
+                  category: 'Tasks',
+                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -163,13 +191,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 id: sampleNotes[originalIndex].id,
                                 title: result[0],
                                 content: result[1],
-                                modifiedTime: DateTime.now(),
+                                modifiedTime: DateTime.now(), category: '',
                               );
                               filteredNotes[index] = Note(
                                 id: sampleNotes[originalIndex].id,
                                 title: result[0],
                                 content: result[1],
-                                modifiedTime: DateTime.now(),
+                                modifiedTime: DateTime.now(), category: '',
                               );
                             });
                           }
@@ -227,58 +255,71 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                onPressed: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute<List<String>>(
-                      builder: (BuildContext context) => const EditScreen(),
-                    ),
-                  );
-
-                  if (result != null &&
-                      result is List<String> &&
-                      result.length >= 2) {
-                    setState(() {
-                      sampleNotes.add(Note(
-                        id: sampleNotes.length,
-                        title: result[0],
-                        content: result[1],
-                        modifiedTime: DateTime.now(),
-                      ));
-                      filteredNotes = sampleNotes;
-                    });
-                  }
-                },
-                icon: Icon(Icons.add),
-              ),
-              IconButton(
-                onPressed: () {
-                  // Implement camera functionality
-                },
-                icon: Icon(Icons.camera_alt),
-              ),
-              IconButton(
-                onPressed: () {
-                  // Implement audio recording functionality
-                },
-                icon: Icon(Icons.mic),
-              ),
-              IconButton(
-                onPressed: () {
-                  // Implement sketching functionality
-                },
-                icon: Icon(Icons.edit),
-              ),
-            ],
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Divider(
+            thickness: 1,
+            color: Colors.grey,
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute<List<String>>(
+                            builder: (BuildContext context) => const EditScreen(),
+                          ),
+                        );
+
+                        if (result != null &&
+                            result is List<String> &&
+                            result.length >= 2) {
+                          setState(() {
+                            sampleNotes.add(Note(
+                              id: sampleNotes.length,
+                              title: result[0],
+                              content: result[1],
+                              modifiedTime: DateTime.now(), category: '',
+                            ));
+                            filteredNotes = sampleNotes;
+                          });
+                        }
+                      },
+                      icon: Icon(Icons.add),
+                    ),
+                    Text('New'),
+                  ],
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () async {
+                      },
+                      icon: Icon(Icons.camera_alt),
+                    ),
+                    IconButton(
+                      onPressed: (){
+                      },
+                      icon: Icon(Icons.mic),
+                    ),
+                    IconButton(
+                      onPressed: (){
+                      },
+                      icon: Icon(Icons.edit),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -337,9 +378,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class CategoryContainer extends StatelessWidget {
   final String category;
+  final void Function(String) onTap; // Update the function signature
 
   const CategoryContainer({
     required this.category,
+    required this.onTap, // Update the constructor
     Key? key,
   }) : super(key: key);
 
@@ -347,7 +390,7 @@ class CategoryContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // Implement category selection functionality
+        onTap(category); // Pass the category name to the callback function
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -368,3 +411,4 @@ class CategoryContainer extends StatelessWidget {
     );
   }
 }
+

@@ -12,17 +12,18 @@ class EditScreen extends StatefulWidget {
 class _EditScreenState extends State<EditScreen> {
   TextEditingController _titleController = TextEditingController();
   TextEditingController _contentController = TextEditingController();
+  String _selectedCategory = 'Uncategorized'; // Default category
 
   @override
   void initState() {
     if (widget.note != null) {
       _titleController = TextEditingController(text: widget.note!.title);
       _contentController = TextEditingController(text: widget.note!.content);
+      _selectedCategory = widget.note!.category;
     }
 
     super.initState();
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -132,6 +133,8 @@ class _EditScreenState extends State<EditScreen> {
         backgroundColor: Colors.grey.shade800,
         child: const Icon(Icons.save),
       ),
+      
     );
+    
   }
 }

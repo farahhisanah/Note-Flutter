@@ -37,7 +37,7 @@ class LoginScreen extends StatelessWidget {
                   Text(
                     "All Your Notes in One Place",
                     style: TextStyle(
-                      fontFamily: 'Book Antiqua',
+                      fontFamily: "Book Antiqua",
                       fontSize: 25,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1,
