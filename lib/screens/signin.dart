@@ -1,3 +1,4 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:note_flutter/screens/home.dart';
 import 'package:note_flutter/screens/signup.dart';
@@ -5,6 +6,9 @@ import 'package:note_flutter/screens/signup.dart';
 class SignInScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Create a dummy XFile object
+    final dummyPicture = XFile('path/to/dummy/image.jpg'); // Update this with a valid file path if necessary
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Padding(
@@ -37,9 +41,11 @@ class SignInScreen extends StatelessWidget {
             SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
-              Navigator.push(
+                Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => HomeScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => HomeScreen(picture: dummyPicture),
+                  ),
                 );
               },
               child: Text('Sign In'),

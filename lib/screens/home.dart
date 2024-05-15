@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:note_flutter/constants/colors.dart';
@@ -8,40 +9,34 @@ import 'package:note_flutter/screens/edit.dart';
 import 'package:note_flutter/screens/setting.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({Key? key, required this.picture}) : super(key: key);
+  final XFile picture;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Note> filteredNotes = [];
+  List<Note> notes = [];
   bool sorted = false;
-  String selectedCategory = 'All'; // Define selectedCategory here
+  String selectedCategory = 'All';
 
   @override
   void initState() {
     super.initState();
-    filteredNotes = sampleNotes;
+    notes = [];
   }
 
-void sortNotesByModifiedTime(List<Note> notes) {
+  void sortNotesByModifiedTime() {
     notes.sort((a, b) => a.modifiedTime.compareTo(b.modifiedTime));
     if (!sorted) notes = notes.reversed.toList();
     sorted = !sorted;
   }
 
-  // Function to filter notes based on category
- void filterNotesByCategory(String category) {
+  void filterNotesByCategory(String category) {
     setState(() {
       selectedCategory = category;
-      if (category == 'All') {
-        filteredNotes = sampleNotes;
-      } else {
-        filteredNotes = sampleNotes.where((note) => note.category == category).toList();
-      }
     });
-    print('Category Selected: $category'); // Print the selected category
   }
 
   Color getRandomColor() {
@@ -50,23 +45,33 @@ void sortNotesByModifiedTime(List<Note> notes) {
     return backgroundColors[index];
   }
 
-  void onSearchTextChanged(String searchText) {
-    setState(() {
-      filteredNotes = sampleNotes.where((note) =>
-          note.content.toLowerCase().contains(searchText.toLowerCase()) ||
-          note.title.toLowerCase().contains(searchText.toLowerCase())).toList();
-    });
-  }
-
   void deleteNote(int index) {
     setState(() {
-      Note note = filteredNotes[index];
-      sampleNotes.remove(note);
-      filteredNotes.removeAt(index);
+      if (index >= 0 && index < notes.length) {
+        notes.removeAt(index);
+      }
     });
   }
 
+  void _addOrEditNote([Note? note]) async {
+    final result = await Navigator.push<Note>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditScreen(note: note, picture: widget.picture),
+      ),
+    );
 
+    if (result != null) {
+      setState(() {
+        if (note == null) {
+          notes.add(result);
+        } else {
+          final index = notes.indexOf(note);
+          notes[index] = result;
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +102,7 @@ void sortNotesByModifiedTime(List<Note> notes) {
                 IconButton(
                   onPressed: () {
                     setState(() {
-                      sortNotesByModifiedTime(filteredNotes);
+                      sortNotesByModifiedTime();
                     });
                   },
                   icon: Container(
@@ -117,7 +122,6 @@ void sortNotesByModifiedTime(List<Note> notes) {
             ),
             const SizedBox(height: 20),
             TextField(
-              onChanged: onSearchTextChanged,
               style: const TextStyle(fontSize: 16, color: Colors.black),
               decoration: InputDecoration(
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -137,24 +141,24 @@ void sortNotesByModifiedTime(List<Note> notes) {
               ),
             ),
             const SizedBox(height: 10),
-             Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 CategoryContainer(
                   category: 'All',
-                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                  onTap: filterNotesByCategory,
                 ),
                 CategoryContainer(
                   category: 'Favorites',
-                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                  onTap: filterNotesByCategory,
                 ),
                 CategoryContainer(
                   category: 'To Do Lists',
-                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                  onTap: filterNotesByCategory,
                 ),
                 CategoryContainer(
                   category: 'Tasks',
-                  onTap: filterNotesByCategory, // Ensure filterNotesByCategory is assigned
+                  onTap: filterNotesByCategory,
                 ),
               ],
             ),
@@ -162,8 +166,12 @@ void sortNotesByModifiedTime(List<Note> notes) {
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.only(top: 10),
-                itemCount: filteredNotes.length,
+                itemCount: notes.length,
                 itemBuilder: (context, index) {
+                  final note = notes[index];
+                  if (selectedCategory != 'All' && note.category != selectedCategory) {
+                    return Container();
+                  }
                   return Card(
                     margin: const EdgeInsets.only(bottom: 20),
                     color: getRandomColor(),
@@ -173,40 +181,12 @@ void sortNotesByModifiedTime(List<Note> notes) {
                     child: Padding(
                       padding: const EdgeInsets.all(10.0),
                       child: ListTile(
-                        onTap: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute<List<String>>(
-                              builder: (BuildContext context) =>
-                                  EditScreen(note: filteredNotes[index]),
-                            ),
-                          );
-                          if (result != null &&
-                              result is List<String> &&
-                              result.length >= 2) {
-                            setState(() {
-                              int originalIndex =
-                                  sampleNotes.indexOf(filteredNotes[index]);
-                              sampleNotes[originalIndex] = Note(
-                                id: sampleNotes[originalIndex].id,
-                                title: result[0],
-                                content: result[1],
-                                modifiedTime: DateTime.now(), category: '',
-                              );
-                              filteredNotes[index] = Note(
-                                id: sampleNotes[originalIndex].id,
-                                title: result[0],
-                                content: result[1],
-                                modifiedTime: DateTime.now(), category: '',
-                              );
-                            });
-                          }
-                        },
+                        onTap: () => _addOrEditNote(note),
                         title: RichText(
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                           text: TextSpan(
-                            text: '${filteredNotes[index].title} \n',
+                            text: '${note.title} \n',
                             style: const TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.bold,
@@ -215,7 +195,7 @@ void sortNotesByModifiedTime(List<Note> notes) {
                             ),
                             children: [
                               TextSpan(
-                                text: '${filteredNotes[index].content} \n',
+                                text: '${note.content} \n',
                                 style: const TextStyle(
                                   color: Colors.black,
                                   fontWeight: FontWeight.normal,
@@ -229,7 +209,7 @@ void sortNotesByModifiedTime(List<Note> notes) {
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
-                            'Edited: ${DateFormat('EEE MMM d, yyyy h:mm a').format(filteredNotes[index].modifiedTime)} \n',
+                            'Edited: ${DateFormat('EEE MMM d, yyyy h:mm a').format(note.modifiedTime)} \n',
                             style: const TextStyle(
                               fontSize: 10,
                               fontStyle: FontStyle.italic,
@@ -255,71 +235,9 @@ void sortNotesByModifiedTime(List<Note> notes) {
           ],
         ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Divider(
-            thickness: 1,
-            color: Colors.grey,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute<List<String>>(
-                            builder: (BuildContext context) => const EditScreen(),
-                          ),
-                        );
-
-                        if (result != null &&
-                            result is List<String> &&
-                            result.length >= 2) {
-                          setState(() {
-                            sampleNotes.add(Note(
-                              id: sampleNotes.length,
-                              title: result[0],
-                              content: result[1],
-                              modifiedTime: DateTime.now(), category: '',
-                            ));
-                            filteredNotes = sampleNotes;
-                          });
-                        }
-                      },
-                      icon: Icon(Icons.add),
-                    ),
-                    Text('New'),
-                  ],
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () async {
-                      },
-                      icon: Icon(Icons.camera_alt),
-                    ),
-                    IconButton(
-                      onPressed: (){
-                      },
-                      icon: Icon(Icons.mic),
-                    ),
-                    IconButton(
-                      onPressed: (){
-                      },
-                      icon: Icon(Icons.edit),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _addOrEditNote(),
+        child: Icon(Icons.add),
       ),
     );
   }
@@ -378,11 +296,11 @@ void sortNotesByModifiedTime(List<Note> notes) {
 
 class CategoryContainer extends StatelessWidget {
   final String category;
-  final void Function(String) onTap; // Update the function signature
+  final void Function(String) onTap;
 
   const CategoryContainer({
     required this.category,
-    required this.onTap, // Update the constructor
+    required this.onTap,
     Key? key,
   }) : super(key: key);
 
@@ -390,7 +308,7 @@ class CategoryContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        onTap(category); // Pass the category name to the callback function
+        onTap(category);
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -411,4 +329,3 @@ class CategoryContainer extends StatelessWidget {
     );
   }
 }
-
