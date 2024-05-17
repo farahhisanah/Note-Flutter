@@ -12,10 +12,10 @@ class LoginScreen extends StatelessWidget {
           Positioned.fill(
             child: Center(
               child: Padding(
-                padding: EdgeInsets.only(top: 50), // Adjust top padding
+                padding: EdgeInsets.only(top: 5), // Adjust top padding to move the image up
                 child: Image.asset(
                   "images/icons.png",
-                  width: 150,// Adjust image width
+                  width: 150, // Adjust image width
                 ),
               ),
             ),

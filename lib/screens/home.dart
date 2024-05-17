@@ -1,16 +1,18 @@
+import 'dart:io';
 import 'dart:math';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:note_flutter/constants/colors.dart';
+import 'package:note_flutter/features/calendar.dart';
 import 'package:note_flutter/models/note.dart';
 import 'package:note_flutter/screens/edit.dart';
 import 'package:note_flutter/screens/setting.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key, required this.picture}) : super(key: key);
-  final XFile picture;
+  final List<Note> notes;
+
+  const HomeScreen({Key? key, required this.notes}) : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -24,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    notes = [];
+    notes = widget.notes; // Update the notes list from the widget property
   }
 
   void sortNotesByModifiedTime() {
@@ -45,19 +47,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return backgroundColors[index];
   }
 
-  void deleteNote(int index) {
-    setState(() {
-      if (index >= 0 && index < notes.length) {
-        notes.removeAt(index);
-      }
-    });
-  }
-
-  void _addOrEditNote([Note? note]) async {
+  Future<void> _addOrEditNote([Note? note]) async {
     final result = await Navigator.push<Note>(
       context,
       MaterialPageRoute(
-        builder: (context) => EditScreen(note: note, picture: widget.picture),
+        builder: (context) => EditScreen(note: note, notes: notes),
       ),
     );
 
@@ -99,24 +93,50 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Notes',
                   style: TextStyle(fontSize: 30, color: Colors.grey.shade800),
                 ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      sortNotesByModifiedTime();
-                    });
-                  },
-                  icon: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade800.withOpacity(.8),
-                      borderRadius: BorderRadius.circular(20),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          sortNotesByModifiedTime();
+                        });
+                      },
+                      icon: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade800.withOpacity(.8),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Icon(
+                          Icons.sort,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                    child: Icon(
-                      Icons.sort,
-                      color: Colors.white,
+                    IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CalendarScreen(),
+                          ),
+                        );
+                      },
+                      icon: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade800.withOpacity(.8),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Icon(
+                          Icons.calendar_today,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -172,59 +192,75 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (selectedCategory != 'All' && note.category != selectedCategory) {
                     return Container();
                   }
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 20),
-                    color: getRandomColor(),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: ListTile(
-                        onTap: () => _addOrEditNote(note),
-                        title: RichText(
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          text: TextSpan(
-                            text: '${note.title} \n',
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                              height: 1.5,
+                  return GestureDetector(
+                    onTap: () => _addOrEditNote(note),
+                    child: Card(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      color: getRandomColor(),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    note.title,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                  if (note.content.isNotEmpty)
+                                    Text(
+                                      note.content,
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.normal,
+                                        fontSize: 14,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                            children: [
-                              TextSpan(
-                                text: '${note.content} \n',
-                                style: const TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.normal,
-                                  fontSize: 14,
-                                  height: 1.5,
+                            if (note.imagePath != null || note.sketchPath != null)
+                              SizedBox(
+                                width: 100,
+                                height: 100,
+                                child: Stack(
+                                  children: [
+                                    if (note.imagePath != null)
+                                      Positioned.fill(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: Image.file(
+                                            File(note.imagePath!),
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                    if (note.sketchPath != null)
+                                      Positioned.fill(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: Image.file(
+                                            File(note.sketchPath!),
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            'Edited: ${DateFormat('EEE MMM d, yyyy h:mm a').format(note.modifiedTime)} \n',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontStyle: FontStyle.italic,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                        trailing: IconButton(
-                          onPressed: () async {
-                            final result = await confirmDialog(context);
-                            if (result != null && result) {
-                              deleteNote(index);
-                            }
-                          },
-                          icon: Icon(Icons.delete, color: Colors.grey.shade800),
+                          ],
                         ),
                       ),
                     ),
@@ -239,57 +275,6 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: () => _addOrEditNote(),
         child: Icon(Icons.add),
       ),
-    );
-  }
-
-  Future<dynamic> confirmDialog(BuildContext context) {
-    return showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey.shade900,
-          icon: const Icon(Icons.info, color: Colors.grey),
-          title: const Text(
-            'Are you sure you want to delete?',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context, true);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade300,
-                ),
-                child: const SizedBox(
-                  width: 60,
-                  child: Text(
-                    'Yes',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context, false);
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const SizedBox(
-                  width: 60,
-                  child: Text(
-                    'No',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

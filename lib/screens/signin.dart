@@ -44,7 +44,7 @@ class SignInScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => HomeScreen(picture: dummyPicture),
+                    builder: (context) => HomeScreen(notes: [],),
                   ),
                 );
               },
