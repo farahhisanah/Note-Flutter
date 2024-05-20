@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:note_flutter/constants/colors.dart';
+import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/calendar.dart';
 import 'package:note_flutter/models/note.dart';
 import 'package:note_flutter/screens/edit.dart';
@@ -19,25 +21,45 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Note> notes = [];
+  User? user = FirebaseAuth.instance.currentUser;
+  
+  // firestore access
+  final FirestoreDatabase database = FirestoreDatabase();
+
+  late List<Note> notes;
+  List<Note> filteredNotes = [];
   bool sorted = false;
   String selectedCategory = 'All';
+  String searchQuery = '';
 
   @override
   void initState() {
     super.initState();
-    notes = widget.notes; // Update the notes list from the widget property
+    notes = widget.notes;
+    filteredNotes = notes;
   }
 
   void sortNotesByModifiedTime() {
     notes.sort((a, b) => a.modifiedTime.compareTo(b.modifiedTime));
     if (!sorted) notes = notes.reversed.toList();
     sorted = !sorted;
+    filterNotesByCategory(selectedCategory);
   }
 
   void filterNotesByCategory(String category) {
     setState(() {
       selectedCategory = category;
+      filteredNotes = notes.where((note) {
+        return (category == 'All' || note.category == category) &&
+               (searchQuery.isEmpty || note.title.contains(searchQuery));
+      }).toList();
+    });
+  }
+
+  void updateSearchQuery(String query) {
+    setState(() {
+      searchQuery = query;
+      filterNotesByCategory(selectedCategory);
     });
   }
 
@@ -63,12 +85,16 @@ class _HomeScreenState extends State<HomeScreen> {
           final index = notes.indexOf(note);
           notes[index] = result;
         }
+        filterNotesByCategory(selectedCategory);
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('Get data user:  $user');
+    String? userEmail = user?.email;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Padding(
@@ -143,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 20),
             TextField(
               style: const TextStyle(fontSize: 16, color: Colors.black),
+              onChanged: updateSearchQuery,
               decoration: InputDecoration(
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 hintText: "Search notes",
@@ -166,108 +193,137 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 CategoryContainer(
                   category: 'All',
+                  isSelected: selectedCategory == 'All',
                   onTap: filterNotesByCategory,
                 ),
                 CategoryContainer(
                   category: 'Favorites',
+                  isSelected: selectedCategory == 'Favorites',
                   onTap: filterNotesByCategory,
                 ),
                 CategoryContainer(
                   category: 'To Do Lists',
+                  isSelected: selectedCategory == 'To Do Lists',
                   onTap: filterNotesByCategory,
                 ),
                 CategoryContainer(
                   category: 'Tasks',
+                  isSelected: selectedCategory == 'Tasks',
                   onTap: filterNotesByCategory,
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(top: 10),
-                itemCount: notes.length,
-                itemBuilder: (context, index) {
-                  final note = notes[index];
-                  if (selectedCategory != 'All' && note.category != selectedCategory) {
-                    return Container();
-                  }
-                  return GestureDetector(
-                    onTap: () => _addOrEditNote(note),
-                    child: Card(
-                      margin: const EdgeInsets.only(bottom: 20),
-                      color: getRandomColor(),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    note.title,
-                                    style: const TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      height: 1.5,
-                                    ),
-                                  ),
-                                  if (note.content.isNotEmpty)
+             StreamBuilder(
+              stream: database.getNotesStream(userEmail!), 
+              builder: (context, snapshot){
+                // show loading circle
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                    );
+                }
+
+              // get all notes by current user
+              final notes = snapshot.data!.docs;
+              debugPrint('Get data notes:  $notes');
+
+
+              // no data? 
+              if (snapshot.data == null || notes.isEmpty) {
+                return const Center(child: Padding(
+                  padding: EdgeInsets.all(25),
+                  child: Text("No notes found."),
+                  ),
+                );
+              }
+
+            return Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(top: 10),
+                  itemCount: notes.length,
+                  itemBuilder: (context, index) {
+                    final note = notes[index];
+                    if (selectedCategory != 'All' && note['category'] != selectedCategory) {
+                      return Container();
+                    }
+                    return GestureDetector(
+                      onTap: () => _addOrEditNote(),
+                      child: Card(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        color: getRandomColor(),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      note.content,
+                                      note['title'],
                                       style: const TextStyle(
                                         color: Colors.black,
-                                        fontWeight: FontWeight.normal,
-                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
                                         height: 1.5,
                                       ),
                                     ),
-                                ],
-                              ),
-                            ),
-                            if (note.imagePath != null || note.sketchPath != null)
-                              SizedBox(
-                                width: 100,
-                                height: 100,
-                                child: Stack(
-                                  children: [
-                                    if (note.imagePath != null)
-                                      Positioned.fill(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8.0),
-                                          child: Image.file(
-                                            File(note.imagePath!),
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                      ),
-                                    if (note.sketchPath != null)
-                                      Positioned.fill(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8.0),
-                                          child: Image.file(
-                                            File(note.sketchPath!),
-                                            fit: BoxFit.cover,
-                                          ),
+                                    if (note['content'].isNotEmpty)
+                                      Text(
+                                        note['content'],
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.normal,
+                                          fontSize: 14,
+                                          height: 1.5,
                                         ),
                                       ),
                                   ],
                                 ),
                               ),
-                          ],
+                              if (note['imagePath'] != null || note['sketchPath'] != null)
+                                SizedBox(
+                                  width: 100,
+                                  height: 100,
+                                  child: Stack(
+                                    children: [
+                                      if (note['imagePath'] != null)
+                                        Positioned.fill(
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(8.0),
+                                            child: Image.file(
+                                              File(note['imagePath']!),
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                      if (note['sketchPath'] != null)
+                                        Positioned.fill(
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(8.0),
+                                            child: Image.file(
+                                              File(note['sketchPath']!),
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-            ),
+                    );
+                  },
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -281,10 +337,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class CategoryContainer extends StatelessWidget {
   final String category;
+  final bool isSelected;
   final void Function(String) onTap;
 
   const CategoryContainer({
     required this.category,
+    required this.isSelected,
     required this.onTap,
     Key? key,
   }) : super(key: key);
@@ -299,13 +357,13 @@ class CategoryContainer extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         margin: const EdgeInsets.only(right: 10),
         decoration: BoxDecoration(
-          color: Colors.grey.shade200,
+          color: isSelected ? Colors.blueGrey.shade300 : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           category,
           style: TextStyle(
-            color: Colors.grey.shade800,
+            color: isSelected ? Colors.white : Colors.grey.shade800,
             fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
@@ -314,3 +372,4 @@ class CategoryContainer extends StatelessWidget {
     );
   }
 }
+

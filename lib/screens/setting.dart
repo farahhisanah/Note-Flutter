@@ -1,6 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class SettingScreen extends StatelessWidget {
+  const SettingScreen({super.key});
+  
+void logout(BuildContext context) {
+  FirebaseAuth.instance.signOut();
+  Navigator.pushReplacementNamed(context, '/login_register_page');
+}
+
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -26,13 +35,13 @@ class SettingScreen extends StatelessWidget {
           ),
           Divider(), // Divider after Favorites
           ListTile(
-            leading: Icon(Icons.list_alt_outlined),
-            title: Text('To do lists'),
+            leading: Icon(Icons.folder_copy_rounded),
+            title: Text('Folders'),
             onTap: () {
               // Implement navigation to privacy settings
             },
           ),
-          Divider(), // Divider after To do lists
+          Divider(), // Divider after Folders
           ListTile(
             leading: Icon(Icons.delete_outline),
             title: Text('Recently Deleted'),
@@ -48,9 +57,46 @@ class SettingScreen extends StatelessWidget {
               // Implement navigation to help and feedback page
             },
           ),
-          Divider(), 
+          Divider(), // Divider after Settings
+          ListTile(
+            leading: Icon(Icons.logout),
+            title: Text('Logout'),
+            onTap: () {
+              _showLogoutDialog(context);
+            },
+          ),
+          Divider(), // Divider after Logout
         ],
       ),
     );
   }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Logout'),
+          content: Text('Are you sure you want to logout?'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+            ),
+            TextButton(
+              child: Text('Logout'),
+onPressed: () {
+  Navigator.of(context).pop(); // Close the dialog
+  logout(context);
+},
+
+            ),
+          ],
+        );
+      },
+    );
+  }
+
 }

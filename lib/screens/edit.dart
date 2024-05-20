@@ -2,11 +2,17 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
-import 'package:flutter_signature_pad/flutter_signature_pad.dart'; // Import the package
+import 'package:flutter_signature_pad/flutter_signature_pad.dart';
+import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/audio.dart';
 import 'package:note_flutter/features/camera.dart';
+import 'package:note_flutter/helper/helper_functions.dart';
 import 'package:note_flutter/screens/home.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../models/note.dart';
 import 'dart:ui' as ui;
 
@@ -14,13 +20,17 @@ class EditScreen extends StatefulWidget {
   final Note? note;
   final List<Note> notes;
 
-  const EditScreen({Key? key, this.note, required this.notes}) : super(key: key);
+  const EditScreen({Key? key, this.note, required this.notes})
+      : super(key: key);
 
   @override
   State<EditScreen> createState() => _EditScreenState();
-}
+  }
 
 class _EditScreenState extends State<EditScreen> {
+ // firestore access
+ final FirestoreDatabase database = FirestoreDatabase();
+
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   String _selectedCategory = 'Uncategorized'; // Default category
@@ -35,14 +45,29 @@ class _EditScreenState extends State<EditScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note?.title ?? '');
-    _contentController = TextEditingController(text: widget.note?.content ?? '');
+    _contentController =
+        TextEditingController(text: widget.note?.content ?? '');
     if (widget.note != null) {
       _selectedCategory = widget.note!.category;
-      _imagePath = widget.note!.imagePath; // Initialize imagePath if note is provided
-      _audioPath = widget.note!.audioPath; // Initialize audioPath if note is provided
-      _sketchPath = widget.note!.sketchPath; // Initialize sketchPath if note is provided
+      _imagePath =
+          widget.note!.imagePath; // Initialize imagePath if note is provided
+      _audioPath =
+          widget.note!.audioPath; // Initialize audioPath if note is provided
+      _sketchPath =
+          widget.note!.sketchPath; // Initialize sketchPath if note is provided
     }
     _player = FlutterSoundPlayer();
+    _player!.openPlayer().then((value) {
+      setState(() {}); // Update the state once the player is ready
+    });
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    _player!.closePlayer();
+    super.dispose();
   }
 
   // Function to navigate to audio recording screen and handle recorded audio
@@ -58,48 +83,84 @@ class _EditScreenState extends State<EditScreen> {
     }
   }
 
+  // Function to play the recorded audio
+  void _playAudio() async {
+    if (_audioPath != null && await File(_audioPath!).exists()) {
+      await _player!.startPlayer(
+        fromURI: _audioPath!,
+        codec: Codec.aacADTS, // Update codec if necessary
+        whenFinished: () {
+          setState(() {});
+        },
+      );
+    }
+  }
+
   // Function to save note
   Future<void> _saveNote() async {
-    // Save note
-    String title = _titleController.text;
-    String content = _contentController.text;
-    if (_imagePath != null) {
-      content += '\n![Image]($_imagePath)';
-    }
-    if (_audioPath != null) {
-      content += '\n[Audio]($_audioPath)';
-    }
-    if (_sketchPath != null) {
-      content += '\n![Sketch]($_sketchPath)';
-    }
-
-    Note newNote = Note(
-      title: title,
-      content: content,
-      category: _selectedCategory,
-      modifiedTime: DateTime.now(),
-      imagePath: _imagePath,
-      audioPath: _audioPath, // Include audioPath in the new note
-      sketchPath: _sketchPath, // Include sketchPath in the new note
+    // show loading circle
+    showDialog(
+      context: context,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
-
-    List<Note> updatedNotes = List.from(widget.notes);
-    if (widget.note != null) {
-      // Edit existing note
-      int index = updatedNotes.indexOf(widget.note!);
-      if (index != -1) {
-        updatedNotes[index] = newNote;
-      }
+    // only save note if there is something in the textfield
+    if (_titleController.text.isEmpty && _contentController.text.isEmpty) {
+      // pop loading circle
+      Navigator.pop(context);
+      displayMessageToUser("Please fill the required field.", context);
     } else {
-      // Add new note
-      updatedNotes.add(newNote);
-    }
+      try {
+        String title = _titleController.text;
+        String content = _contentController.text;
 
-    // Navigate back to HomeScreen with the updated list of notes
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => HomeScreen(notes: updatedNotes)),
+        Note newNote = Note(
+          title: title,
+          content: content,
+          category: _selectedCategory,
+          modifiedTime: DateTime.now(),
+          imagePath: _imagePath,
+          audioPath: _audioPath, // Include audioPath in the new note
+          sketchPath: _sketchPath, // Include sketchPath in the new note
+        );
+
+        database.createNote(newNote);
+
+        if (!mounted) return; // Checks `this.mounted`, not `context.mounted`.
+        Navigator.of(context).pop();
+        navigateAfterSuccessSaveNote(context);
+      } on FirebaseException catch (e) {
+        // pop loading circle
+        Navigator.pop(context);
+
+        // display error messsage to user
+        displayMessageToUser(e.code, context);
+      }
+    }
+  }
+
+  navigateAfterSuccessSaveNote(BuildContext context) {
+    Widget okButton = TextButton(
+      child: const Text("OK"),
+      onPressed: () {
+        // Navigate to home screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(notes: const []),
+          ),
+        );
+      },
     );
+  }
+
+  Future<String> _uploadFile(File file, String path) async {
+    final storageReference = FirebaseStorage.instance.ref().child(path);
+    final uploadTask = storageReference.putFile(file);
+    final taskSnapshot = await uploadTask.whenComplete(() => {});
+    final downloadUrl = await taskSnapshot.ref.getDownloadURL();
+    return downloadUrl;
   }
 
   // Function to handle taking a photo
@@ -129,7 +190,8 @@ class _EditScreenState extends State<EditScreen> {
     final sign = _signKey.currentState!;
     final image = await sign.getData();
     final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/sketch_${DateTime.now().millisecondsSinceEpoch}.png';
+    final path =
+        '${directory.path}/sketch_${DateTime.now().millisecondsSinceEpoch}.png';
     final file = File(path);
 
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -140,7 +202,7 @@ class _EditScreenState extends State<EditScreen> {
     });
   }
 
-void _deleteNote() {
+  void _deleteNote() {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -163,7 +225,8 @@ void _deleteNote() {
                   // Navigate back to HomeScreen with the updated list of notes
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => HomeScreen(notes: updatedNotes)),
+                    MaterialPageRoute(
+                        builder: (context) => HomeScreen(notes: updatedNotes)),
                   );
                 }
               },
@@ -239,7 +302,8 @@ void _deleteNote() {
                 child: ListTile(
                   leading: Icon(Icons.delete),
                   title: Text('Delete'),
-                  onTap: _deleteNote, // Call _deleteNote when "Delete" is tapped
+                  onTap:
+                      _deleteNote, // Call _deleteNote when "Delete" is tapped
                 ),
               ),
             ],
@@ -278,10 +342,12 @@ void _deleteNote() {
                   ],
                   if (_audioPath != null) ...[
                     const SizedBox(height: 10),
-                    GestureDetector(
-                      child: ListTile(
-                        leading: Icon(Icons.audiotrack, color: Colors.grey),
-                        title: Text('Recorded Audio'),
+                    ListTile(
+                      leading: Icon(Icons.audiotrack, color: Colors.grey),
+                      title: Text('Recorded Audio'),
+                      trailing: IconButton(
+                        icon: Icon(Icons.play_arrow),
+                        onPressed: _playAudio, // Play the recorded audio
                       ),
                     ),
                   ],
@@ -325,7 +391,7 @@ void _deleteNote() {
                 IconButton(
                   onPressed: _takePhoto,
                   icon: Icon(Icons.camera_alt),
-                                    tooltip: 'Take Photo',
+                  tooltip: 'Take Photo',
                 ),
                 IconButton(
                   onPressed: _recordAudio, // Navigate to audio recording screen
@@ -345,4 +411,3 @@ void _deleteNote() {
     );
   }
 }
-

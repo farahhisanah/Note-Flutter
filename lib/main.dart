@@ -1,7 +1,13 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:note_flutter/screens/login.dart';
+import 'package:note_flutter/auth/auth.dart';
+import 'package:note_flutter/auth/login_or_register.dart';
+import 'package:note_flutter/firebase_options.dart';
+import 'package:note_flutter/screens/home.dart';
 
-void main() {
+void main() async{
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MainApp());
 }
 
@@ -13,7 +19,13 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: LoginScreen(),
+      home: const AuthPage(),
+      routes: {
+        '/login_register_page': (context) => const LoginOrRegister(),
+        '/home_page': (context) => HomeScreen(notes: []),
+        // Add other routes as needed
+      },
     );
+
   }
 }
