@@ -17,7 +17,20 @@ class FirestoreDatabase {
       'content': note.content,
       'category': note.category,
       'imagePath': note.imagePath,
-      'audioPath': note.imagePath,
+      'audioPath': note.audioPath,  // Fixed typo
+      'sketchPath': note.sketchPath,
+      'modifiedTime': Timestamp.now(),
+    });
+  }
+
+  // update existing note
+  Future<void> updateNote(String noteId, Note note) {
+    return notes.doc(noteId).update({
+      'title': note.title,
+      'content': note.content,
+      'category': note.category,
+      'imagePath': note.imagePath,
+      'audioPath': note.audioPath,
       'sketchPath': note.sketchPath,
       'modifiedTime': Timestamp.now(),
     });
@@ -34,7 +47,8 @@ class FirestoreDatabase {
     return notesStream;
   }
 
-  void updateNote(String s, Note result) {}
-
-  void addNote(String s, Note result) {}
+  // Delete a note
+  Future<void> deleteNote(String noteId) {
+    return notes.doc(noteId).delete();
+  }
 }

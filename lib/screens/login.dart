@@ -112,8 +112,10 @@ class LoginScreen extends StatelessWidget {
                       flex: 1,
                       child: Divider(
                         color: Colors.black87,
-                        height: 1.5,
-                        thickness: 1,
+                        thickness: 1.0,
+                        height: 1.0,
+                        indent: 16.0,
+                        endIndent: 16.0,
                       ),
                     ),
                   ],

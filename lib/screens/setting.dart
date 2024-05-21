@@ -4,70 +4,98 @@ import 'package:flutter/material.dart';
 class SettingScreen extends StatelessWidget {
   const SettingScreen({super.key});
   
-void logout(BuildContext context) {
-  FirebaseAuth.instance.signOut();
-  Navigator.pushReplacementNamed(context, '/login_register_page');
-}
+  void logout(BuildContext context) {
+    FirebaseAuth.instance.signOut();
+    Navigator.pushReplacementNamed(context, '/login_register_page');
+  }
 
-  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('NotesFolders'),
+        title: const Text('NotesFolders'),
+        backgroundColor: Colors.blueGrey.shade400,
       ),
       body: ListView(
+        padding: const EdgeInsets.all(16.0),
         children: [
-          ListTile(
-            leading: Icon(Icons.edit_document),
-            title: Text('All Notes'),
+          _buildListTile(
+            context,
+            icon: Icons.edit_document,
+            title: 'All Notes',
             onTap: () {
-              // Implement navigation to notifications settings
+              // Implement navigation to All Notes
             },
           ),
-          Divider(), // Divider after All Notes
-          ListTile(
-            leading: Icon(Icons.star_border),
-            title: Text('Favorites'),
+          _buildDivider(),
+          _buildListTile(
+            context,
+            icon: Icons.star_border,
+            title: 'Favorites',
             onTap: () {
-              // Implement navigation to theme settings
+              // Implement navigation to Favorites
             },
           ),
-          Divider(), // Divider after Favorites
-          ListTile(
-            leading: Icon(Icons.folder_copy_rounded),
-            title: Text('Folders'),
+          _buildDivider(),
+          _buildListTile(
+            context,
+            icon: Icons.folder_copy_rounded,
+            title: 'Folders',
             onTap: () {
-              // Implement navigation to privacy settings
+              // Implement navigation to Folders
             },
           ),
-          Divider(), // Divider after Folders
-          ListTile(
-            leading: Icon(Icons.delete_outline),
-            title: Text('Recently Deleted'),
+          _buildDivider(),
+          _buildListTile(
+            context,
+            icon: Icons.delete_outline,
+            title: 'Recently Deleted',
             onTap: () {
-              // Implement navigation to about page
+              // Implement navigation to Recently Deleted
             },
           ),
-          Divider(), // Divider after Recently Deleted
-          ListTile(
-            leading: Icon(Icons.settings),
-            title: Text('Settings'),
+          _buildDivider(),
+          _buildListTile(
+            context,
+            icon: Icons.settings,
+            title: 'Settings',
             onTap: () {
-              // Implement navigation to help and feedback page
+              // Implement navigation to Settings
             },
           ),
-          Divider(), // Divider after Settings
-          ListTile(
-            leading: Icon(Icons.logout),
-            title: Text('Logout'),
+          _buildDivider(),
+          _buildListTile(
+            context,
+            icon: Icons.logout,
+            title: 'Logout',
             onTap: () {
               _showLogoutDialog(context);
             },
           ),
-          Divider(), // Divider after Logout
+          _buildDivider(),
         ],
       ),
+    );
+  }
+
+  Widget _buildListTile(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap}) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.blueGrey.shade400),
+      title: Text(
+        title,
+        style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.w500),
+      ),
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+    );
+  }
+
+  Widget _buildDivider() {
+    return const Divider(
+      thickness: 1.0,
+      height: 1.0,
+      indent: 16.0,
+      endIndent: 16.0,
     );
   }
 
@@ -76,27 +104,25 @@ void logout(BuildContext context) {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Logout'),
-          content: Text('Are you sure you want to logout?'),
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
           actions: <Widget>[
             TextButton(
-              child: Text('Cancel'),
+              child: const Text('Cancel'),
               onPressed: () {
                 Navigator.of(context).pop(); // Close the dialog
               },
             ),
             TextButton(
-              child: Text('Logout'),
-onPressed: () {
-  Navigator.of(context).pop(); // Close the dialog
-  logout(context);
-},
-
+              child: const Text('Logout'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+                logout(context);
+              },
             ),
           ],
         );
       },
     );
   }
-
 }

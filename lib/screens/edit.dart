@@ -6,7 +6,6 @@ import 'package:flutter_signature_pad/flutter_signature_pad.dart';
 import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/audio.dart';
 import 'package:note_flutter/features/camera.dart';
-import 'package:note_flutter/helper/helper_functions.dart';
 import 'package:note_flutter/screens/home.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -19,18 +18,15 @@ import 'dart:ui' as ui;
 class EditScreen extends StatefulWidget {
   final Note? note;
   final List<Note> notes;
+  final String? noteId; // Add noteId to distinguish between new and existing notes
 
-  const EditScreen({Key? key, this.note, required this.notes})
-      : super(key: key);
+  const EditScreen({Key? key, this.note, required this.notes, this.noteId}) : super(key: key);
 
   @override
   State<EditScreen> createState() => _EditScreenState();
-  }
+}
 
 class _EditScreenState extends State<EditScreen> {
- // firestore access
- final FirestoreDatabase database = FirestoreDatabase();
-
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   String _selectedCategory = 'Uncategorized'; // Default category
@@ -40,21 +36,20 @@ class _EditScreenState extends State<EditScreen> {
   FlutterSoundPlayer? _player;
   final _signKey = GlobalKey<SignatureState>(); // GlobalKey for SignaturePad
   bool _isSketchVisible = false; // State variable to control sketch pad visibility
+  final User? user = FirebaseAuth.instance.currentUser;
+
+  final FirestoreDatabase firestoreDatabase = FirestoreDatabase(); // Instance of FirestoreDatabase
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note?.title ?? '');
-    _contentController =
-        TextEditingController(text: widget.note?.content ?? '');
+    _contentController = TextEditingController(text: widget.note?.content ?? '');
     if (widget.note != null) {
       _selectedCategory = widget.note!.category;
-      _imagePath =
-          widget.note!.imagePath; // Initialize imagePath if note is provided
-      _audioPath =
-          widget.note!.audioPath; // Initialize audioPath if note is provided
-      _sketchPath =
-          widget.note!.sketchPath; // Initialize sketchPath if note is provided
+      _imagePath = widget.note!.imagePath; // Initialize imagePath if note is provided
+      _audioPath = widget.note!.audioPath; // Initialize audioPath if note is provided
+      _sketchPath = widget.note!.sketchPath; // Initialize sketchPath if note is provided
     }
     _player = FlutterSoundPlayer();
     _player!.openPlayer().then((value) {
@@ -96,72 +91,94 @@ class _EditScreenState extends State<EditScreen> {
     }
   }
 
-  // Function to save note
-  Future<void> _saveNote() async {
-    // show loading circle
+// Function to save note
+Future<void> _saveNote() async {
+  try {
+    String? imageUrl;
+    String? audioUrl;
+    String? sketchUrl;
+
+    if (_imagePath != null) {
+      imageUrl = await _uploadFile(File(_imagePath!), 'images/${DateTime.now().toIso8601String()}.png');
+      print("Image URL: $imageUrl");
+    }
+
+    if (_audioPath != null) {
+      audioUrl = await _uploadFile(File(_audioPath!), 'audios/${DateTime.now().toIso8601String()}.aac');
+      print("Audio URL: $audioUrl");
+    }
+
+    if (_sketchPath != null) {
+      sketchUrl = await _uploadFile(File(_sketchPath!), 'sketches/${DateTime.now().toIso8601String()}.png');
+      print("Sketch URL: $sketchUrl");
+    }
+
+    Note newNote = Note(
+      title: _titleController.text,
+      content: _contentController.text,
+      category: _selectedCategory,
+      modifiedTime: DateTime.now(),
+      imagePath: imageUrl,
+      audioPath: audioUrl,
+      sketchPath: sketchUrl,
+    );
+
+    if (widget.noteId != null) {
+      await firestoreDatabase.updateNote(widget.noteId!, newNote);
+    } else {
+      await firestoreDatabase.createNote(newNote);
+    }
+
+    List<Note> updatedNotes = List.from(widget.notes);
+    if (widget.note != null) {
+      // Edit existing note
+      int index = updatedNotes.indexOf(widget.note!);
+      if (index != -1) {
+        updatedNotes[index] = newNote;
+      }
+    } else {
+      // Add new note
+      updatedNotes.add(newNote);
+    }
+
     showDialog(
-      context: context,
+      context: context, 
       builder: (context) => const Center(
         child: CircularProgressIndicator(),
       ),
     );
-    // only save note if there is something in the textfield
-    if (_titleController.text.isEmpty && _contentController.text.isEmpty) {
-      // pop loading circle
-      Navigator.pop(context);
-      displayMessageToUser("Please fill the required field.", context);
-    } else {
-      try {
-        String title = _titleController.text;
-        String content = _contentController.text;
 
-        Note newNote = Note(
-          title: title,
-          content: content,
-          category: _selectedCategory,
-          modifiedTime: DateTime.now(),
-          imagePath: _imagePath,
-          audioPath: _audioPath, // Include audioPath in the new note
-          sketchPath: _sketchPath, // Include sketchPath in the new note
-        );
-
-        database.createNote(newNote);
-
-        if (!mounted) return; // Checks `this.mounted`, not `context.mounted`.
-        Navigator.of(context).pop();
-        navigateAfterSuccessSaveNote(context);
-      } on FirebaseException catch (e) {
-        // pop loading circle
-        Navigator.pop(context);
-
-        // display error messsage to user
-        displayMessageToUser(e.code, context);
-      }
-    }
-  }
-
-  navigateAfterSuccessSaveNote(BuildContext context) {
-    Widget okButton = TextButton(
-      child: const Text("OK"),
-      onPressed: () {
-        // Navigate to home screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => HomeScreen(notes: const []),
-          ),
-        );
-      },
+    // Navigate back to HomeScreen with the updated list of notes
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => HomeScreen(notes: updatedNotes)),
     );
+  } catch (e) {
+    print("Error saving note: $e");
   }
+}
 
-  Future<String> _uploadFile(File file, String path) async {
+
+Future<String> _uploadFile(File file, String path) async {
+  try {
     final storageReference = FirebaseStorage.instance.ref().child(path);
     final uploadTask = storageReference.putFile(file);
     final taskSnapshot = await uploadTask.whenComplete(() => {});
     final downloadUrl = await taskSnapshot.ref.getDownloadURL();
     return downloadUrl;
+  } on FirebaseException catch (e) {
+    if (e.code == 'object-not-found') {
+      print("No object exists at the desired reference: $path");
+    } else {
+      print("Error uploading file: $e");
+    }
+    throw e;
+  } catch (e) {
+    print("Error uploading file: $e");
+    throw e;
   }
+}
+
 
   // Function to handle taking a photo
   Future<void> _takePhoto() async {
@@ -190,8 +207,7 @@ class _EditScreenState extends State<EditScreen> {
     final sign = _signKey.currentState!;
     final image = await sign.getData();
     final directory = await getApplicationDocumentsDirectory();
-    final path =
-        '${directory.path}/sketch_${DateTime.now().millisecondsSinceEpoch}.png';
+    final path = '${directory.path}/sketch_${DateTime.now().millisecondsSinceEpoch}.png';
     final file = File(path);
 
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -203,39 +219,42 @@ class _EditScreenState extends State<EditScreen> {
   }
 
   void _deleteNote() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Delete Note"),
-          content: Text("Are you sure you want to delete this note?"),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                List<Note> updatedNotes = List.from(widget.notes);
-                if (widget.note != null) {
-                  // Remove the note from the list
-                  updatedNotes.remove(widget.note);
-                  // Navigate back to HomeScreen with the updated list of notes
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => HomeScreen(notes: updatedNotes)),
-                  );
-                }
-              },
-              child: Text("Delete"),
-            ),
-          ],
-        );
-      },
-    );
+    if (widget.note != null && widget.noteId != null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Delete Note"),
+            content: Text("Are you sure you want to delete this note?"),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () async {
+                  List<Note> updatedNotes = List.from(widget.notes);
+                  if (widget.note != null) {
+                    // Remove the note from the list
+                    updatedNotes.remove(widget.note);
+                    // Delete the note from Firestore
+                    await firestoreDatabase.deleteNote(widget.noteId!);
+                    // Navigate back to HomeScreen with the updated list of notes
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => HomeScreen(notes: updatedNotes)),
+                    );
+                  }
+                },
+                child: Text("Delete"),
+              ),
+            ],
+          );
+        },
+      );
+    }
   }
 
   @override
@@ -302,8 +321,7 @@ class _EditScreenState extends State<EditScreen> {
                 child: ListTile(
                   leading: Icon(Icons.delete),
                   title: Text('Delete'),
-                  onTap:
-                      _deleteNote, // Call _deleteNote when "Delete" is tapped
+                  onTap: _deleteNote, // Call _deleteNote when "Delete" is tapped
                 ),
               ),
             ],

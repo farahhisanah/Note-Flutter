@@ -1,11 +1,9 @@
 import 'dart:io';
 import 'dart:math';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:note_flutter/constants/colors.dart';
-import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/calendar.dart';
 import 'package:note_flutter/models/note.dart';
 import 'package:note_flutter/screens/edit.dart';
@@ -21,12 +19,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  User? user = FirebaseAuth.instance.currentUser;
-  
-  // firestore access
-  final FirestoreDatabase database = FirestoreDatabase();
-
-  late List<Note> notes;
+  List<Note> notes = [];
   List<Note> filteredNotes = [];
   bool sorted = false;
   String selectedCategory = 'All';
@@ -92,9 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('Get data user:  $user');
-    String? userEmail = user?.email;
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: Padding(
@@ -214,116 +204,100 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 10),
-             StreamBuilder(
-              stream: database.getNotesStream(userEmail!), 
-              builder: (context, snapshot){
-                // show loading circle
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                    );
-                }
-
-              // get all notes by current user
-              final notes = snapshot.data!.docs;
-              debugPrint('Get data notes:  $notes');
-
-
-              // no data? 
-              if (snapshot.data == null || notes.isEmpty) {
-                return const Center(child: Padding(
-                  padding: EdgeInsets.all(25),
-                  child: Text("No notes found."),
-                  ),
-                );
-              }
-
-            return Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.only(top: 10),
-                  itemCount: notes.length,
-                  itemBuilder: (context, index) {
-                    final note = notes[index];
-                    if (selectedCategory != 'All' && note['category'] != selectedCategory) {
-                      return Container();
-                    }
-                    return GestureDetector(
-                      onTap: () => _addOrEditNote(),
-                      child: Card(
-                        margin: const EdgeInsets.only(bottom: 20),
-                        color: getRandomColor(),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.only(top: 10),
+                itemCount: filteredNotes.length,
+                itemBuilder: (context, index) {
+                  final note = filteredNotes[index];
+                  return GestureDetector(
+                    onTap: () => _addOrEditNote(note),
+                    child: Card(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      color: getRandomColor(),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                                child: SizedBox(
+                      height: 140, // Set the desired height for all cards here
+                      child: Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    note.title,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                  if (note.content.isNotEmpty)
                                     Text(
-                                      note['title'],
+                                      note.content,
                                       style: const TextStyle(
                                         color: Colors.black,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
+                                        fontWeight: FontWeight.normal,
+                                        fontSize: 14,
                                         height: 1.5,
                                       ),
+                                      maxLines: 3, // Control number of lines displayed
                                     ),
-                                    if (note['content'].isNotEmpty)
-                                      Text(
-                                        note['content'],
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.normal,
-                                          fontSize: 14,
-                                          height: 1.5,
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Last edited: ${DateFormat('yyyy-MM-dd – kk:mm').format(note.modifiedTime)}',
+                                    style: const TextStyle(
+                                      color: Colors.black54,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (note.imagePath != null || note.sketchPath != null)
+                              SizedBox(
+                                width: 100,
+                                height: 100,
+                                child: Stack(
+                                  children: [
+                                    if (note.imagePath != null)
+                                      Positioned.fill(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: Image.file(
+                                            File(note.imagePath!),
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                    if (note.sketchPath != null)
+                                      Positioned.fill(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: Image.file(
+                                            File(note.sketchPath!),
+                                            fit: BoxFit.cover,
+                                          ),
                                         ),
                                       ),
                                   ],
                                 ),
                               ),
-                              if (note['imagePath'] != null || note['sketchPath'] != null)
-                                SizedBox(
-                                  width: 100,
-                                  height: 100,
-                                  child: Stack(
-                                    children: [
-                                      if (note['imagePath'] != null)
-                                        Positioned.fill(
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(8.0),
-                                            child: Image.file(
-                                              File(note['imagePath']!),
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
-                                      if (note['sketchPath'] != null)
-                                        Positioned.fill(
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(8.0),
-                                            child: Image.file(
-                                              File(note['sketchPath']!),
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                ),
-              );
-            }),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -372,4 +346,3 @@ class CategoryContainer extends StatelessWidget {
     );
   }
 }
-
