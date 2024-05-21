@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 List<Color> backgroundColors = [
@@ -12,3 +14,9 @@ List<Color> backgroundColors = [
     const Color(0xFFD4EDDA), // mint green
     const Color(0xFFFFF3CD), // pale orange
   ];
+
+  Color getRandomColor() {
+  Random random = Random();
+  int index = random.nextInt(backgroundColors.length);
+  return backgroundColors[index];
+}

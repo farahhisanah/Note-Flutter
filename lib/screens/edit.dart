@@ -6,6 +6,7 @@ import 'package:flutter_signature_pad/flutter_signature_pad.dart';
 import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/audio.dart';
 import 'package:note_flutter/features/camera.dart';
+import 'package:note_flutter/models/category.dart';
 import 'package:note_flutter/screens/home.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -18,9 +19,10 @@ import 'dart:ui' as ui;
 class EditScreen extends StatefulWidget {
   final Note? note;
   final List<Note> notes;
-  final String? noteId; // Add noteId to distinguish between new and existing notes
+  final String? noteId;
 
-  const EditScreen({Key? key, this.note, required this.notes, this.noteId}) : super(key: key);
+  const EditScreen({Key? key, this.note, required this.notes, this.noteId})
+      : super(key: key);
 
   @override
   State<EditScreen> createState() => _EditScreenState();
@@ -29,31 +31,38 @@ class EditScreen extends StatefulWidget {
 class _EditScreenState extends State<EditScreen> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
-  String _selectedCategory = 'Uncategorized'; // Default category
-  String? _imagePath; // To store the path of the captured image
-  String? _audioPath; // To store the path of the recorded audio
-  String? _sketchPath; // To store the path of the saved sketch
+  List<Category> _categories = [];
+  String? _imagePath;
+  String? _audioPath;
+  String? _sketchPath;
   FlutterSoundPlayer? _player;
-  final _signKey = GlobalKey<SignatureState>(); // GlobalKey for SignaturePad
-  bool _isSketchVisible = false; // State variable to control sketch pad visibility
+  final _signKey = GlobalKey<SignatureState>();
+  bool _isSketchVisible = false;
   final User? user = FirebaseAuth.instance.currentUser;
-
-  final FirestoreDatabase firestoreDatabase = FirestoreDatabase(); // Instance of FirestoreDatabase
+  final FirestoreDatabase firestoreDatabase = FirestoreDatabase();
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note?.title ?? '');
-    _contentController = TextEditingController(text: widget.note?.content ?? '');
+    _contentController =
+        TextEditingController(text: widget.note?.content ?? '');
     if (widget.note != null) {
-      _selectedCategory = widget.note!.category;
-      _imagePath = widget.note!.imagePath; // Initialize imagePath if note is provided
-      _audioPath = widget.note!.audioPath; // Initialize audioPath if note is provided
-      _sketchPath = widget.note!.sketchPath; // Initialize sketchPath if note is provided
+      _imagePath = widget.note!.imagePath;
+      _audioPath = widget.note!.audioPath;
+      _sketchPath = widget.note!.sketchPath;
     }
     _player = FlutterSoundPlayer();
     _player!.openPlayer().then((value) {
-      setState(() {}); // Update the state once the player is ready
+      setState(() {});
+    });
+    _fetchCategories();
+  }
+
+  Future<void> _fetchCategories() async {
+    List<Category> categories = await firestoreDatabase.getCategories();
+    setState(() {
+      _categories = categories;
     });
   }
 
@@ -65,7 +74,6 @@ class _EditScreenState extends State<EditScreen> {
     super.dispose();
   }
 
-  // Function to navigate to audio recording screen and handle recorded audio
   void _recordAudio() async {
     final audioPath = await Navigator.push(
       context,
@@ -78,12 +86,11 @@ class _EditScreenState extends State<EditScreen> {
     }
   }
 
-  // Function to play the recorded audio
   void _playAudio() async {
     if (_audioPath != null && await File(_audioPath!).exists()) {
       await _player!.startPlayer(
         fromURI: _audioPath!,
-        codec: Codec.aacADTS, // Update codec if necessary
+        codec: Codec.aacADTS,
         whenFinished: () {
           setState(() {});
         },
@@ -91,96 +98,216 @@ class _EditScreenState extends State<EditScreen> {
     }
   }
 
-// Function to save note
-Future<void> _saveNote() async {
-  try {
-    String? imageUrl;
-    String? audioUrl;
-    String? sketchUrl;
-
-    if (_imagePath != null) {
-      imageUrl = await _uploadFile(File(_imagePath!), 'images/${DateTime.now().toIso8601String()}.png');
-      print("Image URL: $imageUrl");
-    }
-
-    if (_audioPath != null) {
-      audioUrl = await _uploadFile(File(_audioPath!), 'audios/${DateTime.now().toIso8601String()}.aac');
-      print("Audio URL: $audioUrl");
-    }
-
-    if (_sketchPath != null) {
-      sketchUrl = await _uploadFile(File(_sketchPath!), 'sketches/${DateTime.now().toIso8601String()}.png');
-      print("Sketch URL: $sketchUrl");
-    }
-
-    Note newNote = Note(
-      title: _titleController.text,
-      content: _contentController.text,
-      category: _selectedCategory,
-      modifiedTime: DateTime.now(),
-      imagePath: imageUrl,
-      audioPath: audioUrl,
-      sketchPath: sketchUrl,
+  Future<String?> _showCategoryInputDialog(BuildContext context) async {
+    TextEditingController categoryController = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Add Category'),
+          content: TextField(
+            controller: categoryController,
+            decoration: InputDecoration(hintText: 'Enter category name'),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Add'),
+              onPressed: () {
+                Navigator.of(context).pop(categoryController.text);
+              },
+            ),
+          ],
+        );
+      },
     );
+  }
 
-    if (widget.noteId != null) {
-      await firestoreDatabase.updateNote(widget.noteId!, newNote);
-    } else {
-      await firestoreDatabase.createNote(newNote);
-    }
+  Future<DocumentReference?> _showExistingCategoryDialog(
+      BuildContext context) async {
+    return showDialog<DocumentReference>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Select Category'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _categories.map((category) {
+                return ListTile(
+                  title: Text(category.name),
+                  onTap: () {
+                    var categoryRef = FirebaseFirestore.instance
+                        .collection('Categories')
+                        .doc(category.id);
+                    Navigator.of(context).pop(categoryRef);
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    List<Note> updatedNotes = List.from(widget.notes);
-    if (widget.note != null) {
-      // Edit existing note
-      int index = updatedNotes.indexOf(widget.note!);
-      if (index != -1) {
-        updatedNotes[index] = newNote;
+  Future<void> _saveNote() async {
+    try {
+      String? imageUrl;
+      String? audioUrl;
+      String? sketchUrl;
+
+      if (_imagePath != null) {
+        imageUrl = await _uploadFile(File(_imagePath!),
+            'images/${DateTime.now().toIso8601String()}.png');
+        print("Image URL: $imageUrl");
       }
-    } else {
-      // Add new note
-      updatedNotes.add(newNote);
+
+      if (_audioPath != null) {
+        audioUrl = await _uploadFile(File(_audioPath!),
+            'audios/${DateTime.now().toIso8601String()}.aac');
+        print("Audio URL: $audioUrl");
+      }
+
+      if (_sketchPath != null) {
+        sketchUrl = await _uploadFile(File(_sketchPath!),
+            'sketches/${DateTime.now().toIso8601String()}.png');
+        print("Sketch URL: $sketchUrl");
+      }
+
+      Note newNote = Note(
+        id: '',
+        title: _titleController.text,
+        content: _contentController.text,
+        categoryId: null,
+        modifiedTime: DateTime.now(),
+        imagePath: imageUrl,
+        audioPath: audioUrl,
+        sketchPath: sketchUrl,
+      );
+
+      bool addCategory = await showDialog<bool>(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text('Add to Category'),
+                content: Text('Do you want to add this note to a category?'),
+                actions: <Widget>[
+                  TextButton(
+                    child: Text('No'),
+                    onPressed: () {
+                      Navigator.of(context).pop(false);
+                    },
+                  ),
+                  TextButton(
+                    child: Text('Yes'),
+                    onPressed: () {
+                      Navigator.of(context).pop(true);
+                    },
+                  ),
+                ],
+              );
+            },
+          ) ??
+          false;
+
+      if (addCategory) {
+        DocumentReference? selectedCategoryId;
+        bool addToExistingCategory = await showDialog<bool>(
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: Text('Choose Category Option'),
+                  content: Text(
+                      'Do you want to add this note to an existing category or create a new category?'),
+                  actions: <Widget>[
+                    TextButton(
+                      child: Text('Existing Category'),
+                      onPressed: () {
+                        Navigator.of(context).pop(true);
+                      },
+                    ),
+                    TextButton(
+                      child: Text('New Category'),
+                      onPressed: () {
+                        Navigator.of(context).pop(false);
+                      },
+                    ),
+                  ],
+                );
+              },
+            ) ??
+            false;
+
+        if (addToExistingCategory) {
+          selectedCategoryId = await _showExistingCategoryDialog(context);
+        } else {
+          String? newCategoryName = await _showCategoryInputDialog(context);
+          if (newCategoryName != null && newCategoryName.isNotEmpty) {
+            Category newCategory = Category(id: '', name: newCategoryName);
+            var createdCategory = await firestoreDatabase.createCategory(newCategory);
+            setState(() {
+              _categories.add(newCategory);
+            });
+
+            FirebaseFirestore.instance
+                .collection('Categories')
+                .doc(createdCategory.id);
+
+            selectedCategoryId = createdCategory;
+          }
+        }
+
+        if (selectedCategoryId != null) {
+          newNote = newNote.copyWith(categoryId: selectedCategoryId);
+        }
+      }
+
+      if (widget.noteId != null) {
+        await firestoreDatabase.updateNote(widget.noteId!, newNote);
+      } else {
+        await firestoreDatabase.createNote(newNote);
+      }
+
+      Navigator.pop(context);
+    } catch (e) {
+      print("Error saving note: $e");
     }
-
-    showDialog(
-      context: context, 
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    // Navigate back to HomeScreen with the updated list of notes
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => HomeScreen(notes: updatedNotes)),
-    );
-  } catch (e) {
-    print("Error saving note: $e");
   }
-}
 
-
-Future<String> _uploadFile(File file, String path) async {
-  try {
-    final storageReference = FirebaseStorage.instance.ref().child(path);
-    final uploadTask = storageReference.putFile(file);
-    final taskSnapshot = await uploadTask.whenComplete(() => {});
-    final downloadUrl = await taskSnapshot.ref.getDownloadURL();
-    return downloadUrl;
-  } on FirebaseException catch (e) {
-    if (e.code == 'object-not-found') {
-      print("No object exists at the desired reference: $path");
-    } else {
+  Future<String> _uploadFile(File file, String path) async {
+    try {
+      final storageReference = FirebaseStorage.instance.ref().child(path);
+      final uploadTask = storageReference.putFile(file);
+      final taskSnapshot = await uploadTask.whenComplete(() => {});
+      final downloadUrl = await taskSnapshot.ref.getDownloadURL();
+      return downloadUrl;
+    } on FirebaseException catch (e) {
+      if (e.code == 'object-not-found') {
+        print("No object exists at the desired reference: $path");
+      } else {
+        print("Error uploading file: $e");
+      }
+      throw e;
+    } catch (e) {
       print("Error uploading file: $e");
+      throw e;
     }
-    throw e;
-  } catch (e) {
-    print("Error uploading file: $e");
-    throw e;
   }
-}
 
-
-  // Function to handle taking a photo
   Future<void> _takePhoto() async {
     await availableCameras().then((cameras) async {
       final imagePath = await Navigator.push(
@@ -195,19 +322,18 @@ Future<String> _uploadFile(File file, String path) async {
     });
   }
 
-  // Function to toggle sketch pad visibility
   void _toggleSketchPad() {
     setState(() {
       _isSketchVisible = !_isSketchVisible;
     });
   }
 
-  // Function to save sketch as image
   Future<void> _saveSketch() async {
     final sign = _signKey.currentState!;
     final image = await sign.getData();
     final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/sketch_${DateTime.now().millisecondsSinceEpoch}.png';
+    final path =
+        '${directory.path}/sketch_${DateTime.now().millisecondsSinceEpoch}.png';
     final file = File(path);
 
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -237,14 +363,14 @@ Future<String> _uploadFile(File file, String path) async {
                 onPressed: () async {
                   List<Note> updatedNotes = List.from(widget.notes);
                   if (widget.note != null) {
-                    // Remove the note from the list
                     updatedNotes.remove(widget.note);
-                    // Delete the note from Firestore
                     await firestoreDatabase.deleteNote(widget.noteId!);
-                    // Navigate back to HomeScreen with the updated list of notes
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => HomeScreen(notes: updatedNotes)),
+                      MaterialPageRoute(
+                          builder: (context) => HomeScreen(
+                              notes: updatedNotes,
+                              firestoreDatabase: FirestoreDatabase())),
                     );
                   }
                 },
@@ -275,7 +401,8 @@ Future<String> _uploadFile(File file, String path) async {
         ),
         actions: [
           TextButton(
-            onPressed: _saveNote, // Call _saveNote when the "Save" button is pressed
+            onPressed:
+                _saveNote, // Call _saveNote when the "Save" button is pressed
             child: Text(
               'Save',
               style: TextStyle(
@@ -321,7 +448,8 @@ Future<String> _uploadFile(File file, String path) async {
                 child: ListTile(
                   leading: Icon(Icons.delete),
                   title: Text('Delete'),
-                  onTap: _deleteNote, // Call _deleteNote when "Delete" is tapped
+                  onTap:
+                      _deleteNote, // Call _deleteNote when "Delete" is tapped
                 ),
               ),
             ],
@@ -356,7 +484,7 @@ Future<String> _uploadFile(File file, String path) async {
                   ),
                   if (_imagePath != null) ...[
                     const SizedBox(height: 10),
-                    Image.file(File(_imagePath!), fit: BoxFit.cover),
+                    Image.network(_imagePath!, fit: BoxFit.cover),
                   ],
                   if (_audioPath != null) ...[
                     const SizedBox(height: 10),
@@ -369,9 +497,13 @@ Future<String> _uploadFile(File file, String path) async {
                       ),
                     ),
                   ],
-                  if (_sketchPath != null) ...[
+                  if (_sketchPath != null && widget.note?.sketchPath == null) ...[
                     const SizedBox(height: 10),
                     Image.file(File(_sketchPath!), fit: BoxFit.cover),
+                  ],
+                   if (widget.note?.sketchPath != null) ...[
+                    const SizedBox(height: 10),
+                    Image.network(widget.note!.sketchPath!, fit: BoxFit.cover),
                   ],
                   if (_isSketchVisible) ...[
                     const SizedBox(height: 10),

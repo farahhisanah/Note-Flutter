@@ -1,35 +1,85 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:note_flutter/constants/colors.dart';
+import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/calendar.dart';
+import 'package:note_flutter/models/category.dart';
 import 'package:note_flutter/models/note.dart';
 import 'package:note_flutter/screens/edit.dart';
 import 'package:note_flutter/screens/setting.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<Note> notes;
+  final FirestoreDatabase firestoreDatabase;
 
-  const HomeScreen({Key? key, required this.notes}) : super(key: key);
+  const HomeScreen(
+      {Key? key, required this.notes, required this.firestoreDatabase})
+      : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late User? _user;
+
   List<Note> notes = [];
   List<Note> filteredNotes = [];
   bool sorted = false;
-  String selectedCategory = 'All';
+  String? selectedCategory = null;
   String searchQuery = '';
+  List<Category?> _categories = [];
 
   @override
   void initState() {
     super.initState();
-    notes = widget.notes;
-    filteredNotes = notes;
+    _user = _auth.currentUser;
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    try {
+      await widget.firestoreDatabase
+          .fetchData(); // Fetch data from FirestoreDatabase
+      _fetchNotes();
+      _fetchCategories();
+    } catch (e) {
+      print('Error fetching data: $e');
+    }
+  }
+
+  void _fetchNotes() {
+    try {
+      widget.firestoreDatabase.getNotesStream().listen((querySnapshot) {
+        List<Note> fetchedNotes = querySnapshot.docs.map((doc) {
+          return Note.fromFirestore(doc);
+        }).toList();
+        setState(() {
+          notes = fetchedNotes;
+          filteredNotes = notes;
+        });
+      });
+    } catch (e) {
+      print('Error fetching notes: $e');
+    }
+  }
+
+  Future<void> _fetchCategories() async {
+    try {
+      List<Category?> categories = [null];
+      categories.addAll(await widget.firestoreDatabase.getCategories());
+      setState(() {
+        _categories = categories;
+      });
+    } catch (e) {
+      print('Error fetching categories: $e');
+    }
   }
 
   void sortNotesByModifiedTime() {
@@ -39,12 +89,15 @@ class _HomeScreenState extends State<HomeScreen> {
     filterNotesByCategory(selectedCategory);
   }
 
-  void filterNotesByCategory(String category) {
+  void filterNotesByCategory(String? category) {
     setState(() {
       selectedCategory = category;
       filteredNotes = notes.where((note) {
-        return (category == 'All' || note.category == category) &&
-               (searchQuery.isEmpty || note.title.contains(searchQuery));
+        if(selectedCategory == null) {
+          return true;
+        } else {
+          return note.categoryId?.id == selectedCategory;
+        }
       }).toList();
     });
   }
@@ -177,32 +230,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+            
             const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CategoryContainer(
-                  category: 'All',
-                  isSelected: selectedCategory == 'All',
-                  onTap: filterNotesByCategory,
-                ),
-                CategoryContainer(
-                  category: 'Favorites',
-                  isSelected: selectedCategory == 'Favorites',
-                  onTap: filterNotesByCategory,
-                ),
-                CategoryContainer(
-                  category: 'To Do Lists',
-                  isSelected: selectedCategory == 'To Do Lists',
-                  onTap: filterNotesByCategory,
-                ),
-                CategoryContainer(
-                  category: 'Tasks',
-                  isSelected: selectedCategory == 'Tasks',
-                  onTap: filterNotesByCategory,
-                ),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _categories.map((category) {
+                  return CategoryContainer(
+                    category: category?.name ?? 'ALL',
+                    isSelected: selectedCategory == category?.id,
+                    onTap: (categoryId) => filterNotesByCategory(categoryId),
+                    categoryId: category?.id,
+                  );
+                }).toList(),
+              ),
             ),
+
             const SizedBox(height: 10),
             Expanded(
               child: ListView.builder(
@@ -218,80 +261,84 @@ class _HomeScreenState extends State<HomeScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                                child: SizedBox(
-                      height: 140, // Set the desired height for all cards here
-                      child: Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    note.title,
-                                    style: const TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      height: 1.5,
-                                    ),
-                                  ),
-                                  if (note.content.isNotEmpty)
+                      child: SizedBox(
+                        height:
+                            130, // Set the desired height for all cards here
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      note.content,
+                                      note.title,
                                       style: const TextStyle(
                                         color: Colors.black,
-                                        fontWeight: FontWeight.normal,
-                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
                                         height: 1.5,
                                       ),
-                                      maxLines: 3, // Control number of lines displayed
                                     ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Last edited: ${DateFormat('yyyy-MM-dd – kk:mm').format(note.modifiedTime)}',
-                                    style: const TextStyle(
-                                      color: Colors.black54,
-                                      fontSize: 12,
+                                    if (note.content.isNotEmpty)
+                                      Text(
+                                        note.content,
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.normal,
+                                          fontSize: 14,
+                                          height: 1.5,
+                                        ),
+                                        maxLines:
+                                            3, // Control number of lines displayed
+                                      ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Last edited: ${DateFormat('yyyy-MM-dd – kk:mm').format(note.modifiedTime)}',
+                                      style: const TextStyle(
+                                        color: Colors.black54,
+                                        fontSize: 12,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (note.imagePath != null || note.sketchPath != null)
-                              SizedBox(
-                                width: 100,
-                                height: 100,
-                                child: Stack(
-                                  children: [
-                                    if (note.imagePath != null)
-                                      Positioned.fill(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8.0),
-                                          child: Image.file(
-                                            File(note.imagePath!),
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                      ),
-                                    if (note.sketchPath != null)
-                                      Positioned.fill(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8.0),
-                                          child: Image.file(
-                                            File(note.sketchPath!),
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                      ),
                                   ],
                                 ),
                               ),
-                          ],
+                              if (note.imagePath != null || note.sketchPath != null)
+                                SizedBox(
+                                  width: 100,
+                                  height: 100,
+                                  child: Stack(
+                                    children: [
+                                      if (note.imagePath != null)
+                                        Positioned.fill(
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(8.0),
+                                            child: Image.network(
+                                              (note.imagePath!),
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                      if (note.sketchPath != null)
+                                        Positioned.fill(
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(8.0),
+                                            child: Image.network(
+                                              (note.sketchPath!),
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
                       ),
                     ),
                   );
@@ -312,11 +359,13 @@ class _HomeScreenState extends State<HomeScreen> {
 class CategoryContainer extends StatelessWidget {
   final String category;
   final bool isSelected;
-  final void Function(String) onTap;
+  final String? categoryId; // New field to hold the category ID
+  final void Function(String?) onTap;
 
   const CategoryContainer({
     required this.category,
     required this.isSelected,
+    required this.categoryId, // Assign the category ID
     required this.onTap,
     Key? key,
   }) : super(key: key);
@@ -325,7 +374,7 @@ class CategoryContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        onTap(category);
+        onTap(categoryId); // Pass the category ID when tapped
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

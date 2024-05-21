@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:note_flutter/component/button_auth.dart';
+import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/helper/helper_functions.dart';
 import 'package:note_flutter/screens/home.dart';
 import 'package:note_flutter/screens/signup.dart';
@@ -75,7 +76,7 @@ class _SignInScreenState extends State<SignInScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => HomeScreen(notes: []),
+            builder: (context) => HomeScreen(notes: [], firestoreDatabase: FirestoreDatabase()),
           ),
         );
       },

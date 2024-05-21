@@ -3,14 +3,13 @@ import 'package:note_flutter/screens/signin.dart';
 import 'package:note_flutter/screens/signup.dart';
 
 class LoginOrRegister extends StatefulWidget {
-  const LoginOrRegister({super.key});
+  const LoginOrRegister({Key? key}) : super(key: key);
 
   @override
   State<LoginOrRegister> createState() => _LoginOrRegisterState();
 }
 
 class _LoginOrRegisterState extends State<LoginOrRegister> {
-
   bool showLoginPage = true;
 
   void togglePages() {
@@ -21,11 +20,14 @@ class _LoginOrRegisterState extends State<LoginOrRegister> {
 
   @override
   Widget build(BuildContext context) {
-    if (showLoginPage) {
-      return SignInScreen(onTap: () {  },);
-    } 
-    else {
-      return SignUpScreen(onTap: () {  },);
-    }
+    return Scaffold(
+      body: showLoginPage
+          ? SignInScreen(
+              onTap: togglePages,
+            )
+          : SignUpScreen(
+              onTap: togglePages,
+            ),
+    );
   }
 }
