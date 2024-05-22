@@ -76,7 +76,7 @@ class _SignInScreenState extends State<SignInScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => HomeScreen(notes: [], firestoreDatabase: FirestoreDatabase()),
+            builder: (context) => HomeScreen(firestoreDatabase: FirestoreDatabase(), notes: [],),
           ),
         );
       },

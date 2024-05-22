@@ -10,15 +10,14 @@ import 'package:note_flutter/database/firestore.dart';
 import 'package:note_flutter/features/calendar.dart';
 import 'package:note_flutter/models/category.dart';
 import 'package:note_flutter/models/note.dart';
+import 'package:note_flutter/screens/create.dart';
 import 'package:note_flutter/screens/edit.dart';
 import 'package:note_flutter/screens/setting.dart';
 
 class HomeScreen extends StatefulWidget {
-  final List<Note> notes;
   final FirestoreDatabase firestoreDatabase;
 
-  const HomeScreen(
-      {Key? key, required this.notes, required this.firestoreDatabase})
+  const HomeScreen({Key? key, required this.firestoreDatabase, required List<Note> notes})
       : super(key: key);
 
   @override
@@ -27,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirestoreDatabase firestoreDatabase = FirestoreDatabase();
   late User? _user;
 
   List<Note> notes = [];
@@ -45,8 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchData() async {
     try {
-      await widget.firestoreDatabase
-          .fetchData(); // Fetch data from FirestoreDatabase
+      await widget.firestoreDatabase.fetchData();
       _fetchNotes();
       _fetchCategories();
     } catch (e) {
@@ -62,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }).toList();
         setState(() {
           notes = fetchedNotes;
-          filteredNotes = notes;
+          filterNotesByCategory(selectedCategory);
         });
       });
     } catch (e) {
@@ -83,10 +82,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void sortNotesByModifiedTime() {
-    notes.sort((a, b) => a.modifiedTime.compareTo(b.modifiedTime));
-    if (!sorted) notes = notes.reversed.toList();
-    sorted = !sorted;
-    filterNotesByCategory(selectedCategory);
+    setState(() {
+      notes.sort((a, b) => a.modifiedTime.compareTo(b.modifiedTime));
+      if (!sorted) notes = notes.reversed.toList();
+      sorted = !sorted;
+      filterNotesByCategory(selectedCategory);
+    });
   }
 
   void filterNotesByCategory(String? category) {
@@ -102,10 +103,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+
   void updateSearchQuery(String query) {
     setState(() {
       searchQuery = query;
-      filterNotesByCategory(selectedCategory);
+      filteredNotes = notes.where((note) {
+        if (searchQuery.isEmpty) {
+          return true;
+        } else {
+          return note.title.contains(searchQuery) ||
+              note.content.contains(searchQuery);
+        }
+      }).toList();
     });
   }
 
@@ -115,25 +124,66 @@ class _HomeScreenState extends State<HomeScreen> {
     return backgroundColors[index];
   }
 
-  Future<void> _addOrEditNote([Note? note]) async {
+  Future<void> _createNote() async {
     final result = await Navigator.push<Note>(
       context,
       MaterialPageRoute(
-        builder: (context) => EditScreen(note: note, notes: notes),
+        builder: (context) => CreateScreen(
+          notes: notes,
+          createNoteCallback: _createNoteCallback,
+        ),
       ),
     );
 
     if (result != null) {
       setState(() {
-        if (note == null) {
-          notes.add(result);
-        } else {
-          final index = notes.indexOf(note);
-          notes[index] = result;
-        }
+        notes.add(result);
         filterNotesByCategory(selectedCategory);
       });
     }
+  }
+
+  Future<void> _editNote(Note note) async {
+    final result = await Navigator.push<Note>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditScreen(
+          note: note,
+          notes: notes,
+          firestoreDatabase: widget.firestoreDatabase,
+          editNoteCallback: _editNoteCallback,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        final index = notes.indexWhere((n) => n.id == result.id);
+        if (index != -1) {
+          notes[index] = result;
+          filterNotesByCategory(selectedCategory);
+        }
+      });
+    }
+  }
+
+  // Callback function to handle note creation
+  void _createNoteCallback(Note newNote) {
+    setState(() {
+      notes.add(newNote);
+      filterNotesByCategory(selectedCategory);
+    });
+  }
+
+  // Callback function to handle note editing
+  void _editNoteCallback(Note editedNote) {
+    setState(() {
+      final index = notes.indexWhere((n) => n.id == editedNote.id);
+      if (index != -1) {
+        notes[index] = editedNote;
+        filterNotesByCategory(selectedCategory);
+      }
+    });
   }
 
   @override
@@ -159,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 Text(
-                  'Notes',
+                  'QuickNotes',
                   style: TextStyle(fontSize: 30, color: Colors.grey.shade800),
                 ),
                 Row(
@@ -230,7 +280,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            
             const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -245,116 +294,99 @@ class _HomeScreenState extends State<HomeScreen> {
                 }).toList(),
               ),
             ),
-
             const SizedBox(height: 10),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(top: 10),
-                itemCount: filteredNotes.length,
-                itemBuilder: (context, index) {
-                  final note = filteredNotes[index];
-                  return GestureDetector(
-                    onTap: () => _addOrEditNote(note),
-                    child: Card(
-                      margin: const EdgeInsets.only(bottom: 20),
-                      color: getRandomColor(),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: SizedBox(
-                        height:
-                            130, // Set the desired height for all cards here
-                        child: Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      note.title,
-                                      style: const TextStyle(
-                                        color: Colors.black,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                    if (note.content.isNotEmpty)
-                                      Text(
-                                        note.content,
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.normal,
-                                          fontSize: 14,
-                                          height: 1.5,
-                                        ),
-                                        maxLines:
-                                            3, // Control number of lines displayed
-                                      ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Last edited: ${DateFormat('yyyy-MM-dd – kk:mm').format(note.modifiedTime)}',
-                                      style: const TextStyle(
-                                        color: Colors.black54,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+Expanded(
+  child: StreamBuilder(
+    stream: firestoreDatabase.getNotesStream(),
+    builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return Center(
+          child: CircularProgressIndicator(), // Show a loading indicator while data is being fetched
+        );
+      }
+      if (snapshot.hasError) {
+        return Text('Error: ${snapshot.error}');
+      }
+      List<Note> notes = snapshot.data!.docs.map((doc) => Note.fromFirestore(doc)).toList();
+      return ListView.builder(
+        padding: const EdgeInsets.only(top: 10),
+        itemCount: notes.length,
+        itemBuilder: (context, index) {
+          final note = notes[index];
+          return GestureDetector(
+            onTap: () => _editNote(note),
+            child: Card(
+              margin: const EdgeInsets.only(bottom: 20),
+              color: getRandomColor(),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SizedBox(
+                height: 130,
+                child: Padding(
+                  padding: const EdgeInsets.all(10.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              note.title,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
                               ),
-                              if (note.imagePath != null || note.sketchPath != null)
-                                SizedBox(
-                                  width: 100,
-                                  height: 100,
-                                  child: Stack(
-                                    children: [
-                                      if (note.imagePath != null)
-                                        Positioned.fill(
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(8.0),
-                                            child: Image.network(
-                                              (note.imagePath!),
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
-                                      if (note.sketchPath != null)
-                                        Positioned.fill(
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(8.0),
-                                            child: Image.network(
-                                              (note.sketchPath!),
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              note.content.length > 200
+                                  ? '${note.content.substring(0, 200)}...'
+                                  : note.content,
+                              style: const TextStyle(
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  );
-                },
+                      Column(
+                        children: [
+                          Text(
+                            DateFormat('dd-MM-yyyy HH:mm')
+                                .format(note.modifiedTime),
+                            style: TextStyle(color: Colors.grey.shade800),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
+          );
+        },
+      );
+    },
+  ),
+),
+
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _addOrEditNote(),
-        child: Icon(Icons.add),
+        onPressed: _createNote,
+        backgroundColor: Colors.grey.shade800,
+        child: const Icon(
+          Icons.add,
+          color: Colors.white,
+        ),
       ),
     );
   }
 }
+
 
 class CategoryContainer extends StatelessWidget {
   final String category;
@@ -395,3 +427,8 @@ class CategoryContainer extends StatelessWidget {
     );
   }
 }
+
+
+
+
+

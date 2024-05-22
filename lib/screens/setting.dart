@@ -30,15 +30,6 @@ class SettingScreen extends StatelessWidget {
           _buildDivider(),
           _buildListTile(
             context,
-            icon: Icons.star_border,
-            title: 'Favorites',
-            onTap: () {
-              // Implement navigation to Favorites
-            },
-          ),
-          _buildDivider(),
-          _buildListTile(
-            context,
             icon: Icons.folder_copy_rounded,
             title: 'Folders',
             onTap: () {
@@ -57,8 +48,8 @@ class SettingScreen extends StatelessWidget {
           _buildDivider(),
           _buildListTile(
             context,
-            icon: Icons.settings,
-            title: 'Settings',
+            icon: Icons.supervised_user_circle_rounded,
+            title: 'Profile',
             onTap: () {
               // Implement navigation to Settings
             },

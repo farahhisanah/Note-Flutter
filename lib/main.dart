@@ -26,8 +26,8 @@ class MainApp extends StatelessWidget {
       routes: {
         '/login_register_page': (context) => const LoginOrRegister(),
         '/home_page': (context) => HomeScreen(
-          notes: notesList, 
-          firestoreDatabase: FirestoreDatabase(), // Pass firestoreDatabase here
+
+          firestoreDatabase: FirestoreDatabase(), notes: [], // Pass firestoreDatabase here
         ),
         // Add other routes as needed
       },

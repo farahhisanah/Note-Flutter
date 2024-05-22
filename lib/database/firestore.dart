@@ -13,6 +13,9 @@ class FirestoreDatabase {
   final CollectionReference categories =
       FirebaseFirestore.instance.collection('Categories');
 
+final CollectionReference calendar =
+      FirebaseFirestore.instance.collection('Calendar');
+
   Future<void> fetchData() async {
     await _fetchNotes();
     await _fetchCategories();
@@ -99,6 +102,17 @@ class FirestoreDatabase {
     }
   }
 
+  Future<List<Note>> getNotesByCategory(String categoryId) async {
+    try {
+      QuerySnapshot snapshot =
+          await notes.where('categoryId', isEqualTo: categoryId).get();
+      return snapshot.docs.map((doc) => Note.fromFirestore(doc)).toList();
+    } catch (e) {
+      print('Error getting notes by category: $e');
+      throw e;
+    }
+  }
+  
   Future<DocumentReference> createCategory(Category category) async {
     try {
       return await categories.add(category.toMap());
@@ -136,14 +150,75 @@ class FirestoreDatabase {
     }
   }
 
-  Future<List<Note>> getNotesByCategory(String categoryId) async {
+
+  Future<void> addEventToCalendar(DateTime date, String eventText) async {
     try {
-      QuerySnapshot snapshot =
-          await notes.where('categoryId', isEqualTo: categoryId).get();
-      return snapshot.docs.map((doc) => Note.fromFirestore(doc)).toList();
+      await calendar.add({
+        'date': date,
+        'event': eventText,
+      });
     } catch (e) {
-      print('Error getting notes by category: $e');
+      print('Error adding event to calendar: $e');
       throw e;
     }
   }
+
+Future<Map<DateTime, List<String>>> fetchEvents() async {
+  try {
+    QuerySnapshot<Object?> snapshot = await _firestore.collection('Calendar').get();
+    Map<DateTime, List<String>> eventsMap = {};
+    snapshot.docs.forEach((doc) {
+      // Convert Firestore Timestamp to DateTime
+      DateTime date = (doc['date'] as Timestamp).toDate();
+      String event = doc['event'] as String;
+      eventsMap[date] = eventsMap[date] ?? [];
+      eventsMap[date]!.add(event);
+    });
+    return eventsMap;
+  } catch (e) {
+    print('Error fetching events: $e');
+    throw e;
+  }
+}
+
+
+Future<void> updateEventInCalendar(DateTime date, String oldEvent, String newEvent) async {
+    try {
+      // Query for the event document that matches the date and old event
+      QuerySnapshot<Map<String, dynamic>> snapshot = await FirebaseFirestore.instance
+          .collection('Calendar')
+          .where('date', isEqualTo: date)
+          .where('event', isEqualTo: oldEvent)
+          .get();
+
+      // Update the event document with the new event text
+      snapshot.docs.forEach((doc) async {
+        await doc.reference.update({'event': newEvent});
+      });
+    } catch (error) {
+      print('Error updating event in calendar: $error');
+      throw error;
+    }
+  }
+
+Future<void> deleteEventInCalendar(DateTime date, String event) async {
+  try {
+    // Query for the event document that matches the date and event text
+    QuerySnapshot<Map<String, dynamic>> snapshot = await FirebaseFirestore.instance
+        .collection('Calendar')
+        .where('date', isEqualTo: date)
+        .where('event', isEqualTo: event)
+        .get();
+
+    // Delete the event document
+    snapshot.docs.forEach((doc) async {
+      await doc.reference.delete();
+    });
+  } catch (error) {
+    print('Error deleting event in calendar: $error');
+    throw error;
+  }
+}
+
+  
 }

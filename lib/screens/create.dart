@@ -16,27 +16,21 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/note.dart';
 import 'dart:ui' as ui;
 
-class EditScreen extends StatefulWidget {
-    final Note? note;
+class CreateScreen extends StatefulWidget {
+  final Note? note;
   final List<Note> notes;
   final String? noteId;
-  final FirestoreDatabase firestoreDatabase; // Add this line
-  final void Function(Note) editNoteCallback; // Add this callback
+  final void Function(Note) createNoteCallback; // Add this callback
 
-  const EditScreen({
-    Key? key,
-    this.note,
-    required this.notes,
-    this.noteId,
-    required this.editNoteCallback,
-    required this.firestoreDatabase, // Add this line
-  }) : super(key: key);
+
+  const CreateScreen({Key? key, this.note, required this.notes, this.noteId, required this.createNoteCallback})
+      : super(key: key);
 
   @override
-  State<EditScreen> createState() => _EditScreenState();
+  State<CreateScreen> createState() => _CreateScreenState();
 }
 
-class _EditScreenState extends State<EditScreen> {
+class _CreateScreenState extends State<CreateScreen> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   List<Category> _categories = [];
@@ -47,7 +41,7 @@ class _EditScreenState extends State<EditScreen> {
   final _signKey = GlobalKey<SignatureState>();
   bool _isSketchVisible = false;
   final User? user = FirebaseAuth.instance.currentUser;
-  final FirebaseFirestore firestoreDatabase = FirebaseFirestore.instance;
+  final FirestoreDatabase firestoreDatabase = FirestoreDatabase();
 
   @override
   void initState() {
@@ -55,12 +49,22 @@ class _EditScreenState extends State<EditScreen> {
     _titleController = TextEditingController(text: widget.note?.title ?? '');
     _contentController =
         TextEditingController(text: widget.note?.content ?? '');
-    _imagePath = widget.note?.imagePath;
-    _audioPath = widget.note?.audioPath;
-    _sketchPath = widget.note?.sketchPath;
+    if (widget.note != null) {
+      _imagePath = widget.note!.imagePath;
+      _audioPath = widget.note!.audioPath;
+      _sketchPath = widget.note!.sketchPath;
+    }
     _player = FlutterSoundPlayer();
     _player!.openPlayer().then((value) {
       setState(() {});
+    });
+    _fetchCategories();
+  }
+
+  Future<void> _fetchCategories() async {
+    List<Category> categories = await firestoreDatabase.getCategories();
+    setState(() {
+      _categories = categories;
     });
   }
 
@@ -71,7 +75,6 @@ class _EditScreenState extends State<EditScreen> {
     _player!.closePlayer();
     super.dispose();
   }
-
 
   void _recordAudio() async {
     final audioPath = await Navigator.push(
@@ -163,7 +166,7 @@ class _EditScreenState extends State<EditScreen> {
     );
   }
 
-Future<void> _editNote() async {
+Future<void> _saveNote() async {
   try {
     String? imageUrl;
     String? audioUrl;
@@ -191,82 +194,105 @@ Future<void> _editNote() async {
       id: '',
       title: _titleController.text,
       content: _contentController.text,
-      categoryId: widget.note?.categoryId, // Keep the existing category ID
+      categoryId: null,
       modifiedTime: DateTime.now(),
       imagePath: imageUrl,
       audioPath: audioUrl,
       sketchPath: sketchUrl,
     );
 
-    if (widget.noteId != null) {
-      await widget.firestoreDatabase.updateNote(widget.noteId!, newNote); // Use widget.firestoreDatabase
-    } else {
-      await widget.firestoreDatabase.createNote(newNote); // Use widget.firestoreDatabase
+    bool addCategory = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Add to Category'),
+              content: Text('Do you want to add this note to a category?'),
+              actions: <Widget>[
+                TextButton(
+                  child: Text('No'),
+                  onPressed: () {
+                    Navigator.of(context).pop(false);
+                  },
+                ),
+                TextButton(
+                  child: Text('Yes'),
+                  onPressed: () {
+                    Navigator.of(context).pop(true);
+                  },
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+
+    if (addCategory) {
+      DocumentReference? selectedCategoryId;
+      bool addToExistingCategory = await showDialog<bool>(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text('Choose Category Option'),
+                content: Text(
+                    'Do you want to add this note to an existing category or create a new category?'),
+                actions: <Widget>[
+                  TextButton(
+                    child: Text('Existing Category'),
+                    onPressed: () {
+                      Navigator.of(context).pop(true);
+                    },
+                  ),
+                  TextButton(
+                    child: Text('New Category'),
+                    onPressed: () {
+                      Navigator.of(context).pop(false);
+                    },
+                  ),
+                ],
+              );
+            },
+          ) ??
+          false;
+
+      if (addToExistingCategory) {
+        selectedCategoryId = await _showExistingCategoryDialog(context);
+      } else {
+        String? newCategoryName = await _showCategoryInputDialog(context);
+        if (newCategoryName != null && newCategoryName.isNotEmpty) {
+          Category newCategory = Category(id: '', name: newCategoryName);
+          var createdCategory =
+              await firestoreDatabase.createCategory(newCategory);
+          setState(() {
+            _categories.add(newCategory);
+          });
+
+          FirebaseFirestore.instance
+              .collection('Categories')
+              .doc(createdCategory.id);
+
+          selectedCategoryId = createdCategory;
+        }
+      }
+
+      if (selectedCategoryId != null) {
+        newNote = newNote.copyWith(categoryId: selectedCategoryId);
+      }
     }
 
-    // Show a success message using a SnackBar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Note edited successfully!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    if (widget.noteId != null) {
+      await firestoreDatabase.updateNote(widget.noteId!, newNote);
+    } else {
+      await firestoreDatabase.createNote(newNote);
+    }
 
-    // Pop the screen
-    Navigator.pop(context);
+    // Invoke the callback function and pass the result
+    widget.createNoteCallback(newNote);
+    Navigator.pop(context, newNote); // Pop with the result
   } catch (e) {
-    // Show an error message using a SnackBar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Failed to edit note. Please try again.'),
-        backgroundColor: Colors.red,
-      ),
-    );
     print("Error saving note: $e");
   }
 }
 
-
-void _deleteNote() {
-  if (widget.note != null && widget.noteId != null) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Delete Note"),
-          content: Text("Are you sure you want to delete this note?"),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () async {
-                List<Note> updatedNotes = List.from(widget.notes);
-                if (widget.note != null) {
-                  updatedNotes.remove(widget.note);
-                  await widget.firestoreDatabase.deleteNote(widget.noteId!); // Use widget.firestoreDatabase
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HomeScreen(
-                        notes: updatedNotes,
-                        firestoreDatabase: widget.firestoreDatabase,
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: Text("Delete"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
 
   Future<String> _uploadFile(File file, String path) async {
     try {
@@ -324,6 +350,43 @@ void _deleteNote() {
     });
   }
 
+  void _deleteNote() {
+    if (widget.note != null && widget.noteId != null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Delete Note"),
+            content: Text("Are you sure you want to delete this note?"),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text("Cancel"),
+              ),
+TextButton(
+  onPressed: () async {
+    if (widget.note != null) {
+      await firestoreDatabase.deleteNote(widget.noteId!);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HomeScreen(
+            firestoreDatabase: FirestoreDatabase(), notes: [],
+          ),
+        ),
+      );
+    }
+  },
+  child: Text("Delete"),
+)
+            ],
+          );
+        },
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +407,7 @@ void _deleteNote() {
         actions: [
           TextButton(
             onPressed:
-                _editNote, // Call _sedit when the "Save" button is pressed
+                _saveNote, // Call _saveNote when the "Save" button is pressed
             child: Text(
               'Save',
               style: TextStyle(
